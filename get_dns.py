@@ -30,15 +30,13 @@ def connect_pihole_sql():
 # requests to databases
 # --------------------------------------------------------------------------
 # todo - filter out visited with last 24 hours
-def get_all_unique(handle):
+def get_domains_api(handle):
     handle.refresh()
     unique = handle.unique_domains
     pp.pprint("Host visited " + unique + " unique domains")
     handle.refreshTop(unique)
-    for i in iter(handle.top_queries.items()):
-        print(i[0])
+    check_domain_aptdb(handle.top_queries.items())    
 
-# todo - close connection properly
 def get_domains_sql(conn):        
     sql = "select domain from queries where timestamp>=strftime('%s','now')-" + creds.time_frame + " group by domain"    
     cur = conn.cursor()
@@ -47,14 +45,29 @@ def get_domains_sql(conn):
 # todo - wrap HTTP POST requests into separate lib as pihole-api
 def check_domain_aptdb(domains):    
     for domain in domains:                
-        body = dict(auth_code=creds.apt_db_key, entries='[\"' + domain[0] + '\"]')                
-        r = requests.post(creds.apt_db_url, body, auth=(creds.apt_db_htuser,creds.apt_db_htpass))                
-        print(r.text)    
+        try:
+            print(domain[0])
+            body = dict(auth_code=creds.apt_db_key, entries='[\"' + domain[0] + '\"]')                
+            r = requests.post(creds.apt_db_url, body, auth=(creds.apt_db_htuser,creds.apt_db_htpass))                
+            print(r.text)    
+        except TypeError:
+            print("Domains list is over")
 
 # --------------------------------------------------------------------------
 if __name__ == "__main__":
+    # sql way if file is available
+    print("Through SQLite")
     conn = connect_pihole_sql()
     domains = get_domains_sql(conn)    
-    check_domain_aptdb(domains) 
-# todo - add proper ctor/dtor for connect/disconnect
+    check_domain_aptdb(domains)
     conn.close()
+
+    # HTTP API way
+    print("Through HTTP API")
+    handle = connect_pihole_api()
+    domains = get_domains_api(handle)
+    check_domain_aptdb(domains)
+    # closing the HTTP API connection?
+        
+    # todo - add proper ctor/dtor for connect/disconnect
+    
