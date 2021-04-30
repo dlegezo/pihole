@@ -1,4 +1,4 @@
-# # creds.py template
+# # script needs creds.py module with the following template
 # pihole_ip = ""
 # pihole_pass = ""
 # pihole_db_path = "<path to file pihole-FTL.db>"
@@ -12,9 +12,9 @@
 
 import creds
 import pihole as ph
-import pprint as pp
 import sqlite3
 import requests
+import json
 
 # --------------------------------------------------------------------------
 # connect to pihole
@@ -33,9 +33,9 @@ def connect_pihole_sql():
 def get_domains_api(conn):
     conn.refresh()
     unique = conn.unique_domains
-    pp.pprint("Host visited " + unique + " unique domains")
-    conn.refreshTop(unique)
-    check_domain_aptdb(conn.top_queries.items())    
+    print("Host visited " + unique + " unique domains")
+    conn.refreshTop(unique)    
+    return conn.top_queries.items()
 
 def get_domains_sql(conn):        
     sql = "select domain from queries where timestamp>=strftime('%s','now')-" + creds.time_frame + " group by domain"    
@@ -46,21 +46,24 @@ def get_domains_sql(conn):
 # check agains another database
 # todo - wrap HTTP POST requests into separate lib as pihole-api
 def check_domain_aptdb(domains):    
-    entities = '['        
-    for i, domain in enumerate(domains):                        
-        try:
-            if i == 0:
-                entities += "\"" + domain[0] + "\""
-            else:
-                entities += ",\"" + domain[0] + "\""            
-        except TypeError:
-            print("Domains list is over")
+    entities = '['       
+    for i, domain in enumerate(domains):          
+        if i == 0:
+            entities += "\"" + domain[0] + "\""
+        else:
+            entities += ",\"" + domain[0] + "\""            
     # to test with tagged one
     entities += ',\"​azussystems.com\"]'
-    body = dict(auth_code=creds.apt_db_key, entries=entities)                
+    print("Asking aptdb for:\n" + entities)
+    body = dict(auth_code=creds.apt_db_key, entries=entities)     
     r = requests.post(creds.apt_db_url, body, auth=(creds.apt_db_htuser,creds.apt_db_htpass))                
-    print(r.text)
-    print(entities)
+    return(r)
+
+def deserialize_json(text):
+    deserialized = json.loads(text)
+    print("The related to known apts are:")    
+    print("Domains matched: " + str(deserialized["return_data"]["matches"]))
+    print(deserialized["return_data"]["entries"])
 
 # --------------------------------------------------------------------------
 if __name__ == "__main__":
@@ -68,14 +71,16 @@ if __name__ == "__main__":
     print("Using SQLite")
     conn = connect_pihole_sql()
     domains = get_domains_sql(conn)    
-    check_domain_aptdb(domains)
+    checked = check_domain_aptdb(domains)    
+    deserialize_json(checked.text)
     conn.close()
 
     # HTTP API way
     print("Using HTTP API")
     handle = connect_pihole_api()
     domains = get_domains_api(handle)
-    check_domain_aptdb(domains)
+    checked = check_domain_aptdb(domains)
+    deserialize_json(checked.text)
     # closing the HTTP API connection?
         
     # todo - add proper ctor/dtor for connect/disconnect
